@@ -11,6 +11,7 @@ interface Expense {
   amount: number;
   category: string;
   date: string;
+  accountType: "cash" | "atm";
 }
 
 export default function Home() {
@@ -21,18 +22,45 @@ export default function Home() {
   const [category, setCategory] = useState("makanan");
   const [date, setDate] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const [selectedDate, setSelectedDate] = useState<string>(todayString);
+  const [accountType, setAccountType] = useState<"cash" | "atm">("cash");
+  const [cashBalance, setCashBalance] = useState("");
+  const [atmBalance, setAtmBalance] = useState("");
+  const [cashBalanceDisplay, setCashBalanceDisplay] = useState("");
+  const [atmBalanceDisplay, setAtmBalanceDisplay] = useState("");
+  const [showBalanceModal, setShowBalanceModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     const savedExpenses = localStorage.getItem("expenses");
     if (savedExpenses) {
       setExpenses(JSON.parse(savedExpenses));
     }
+    const savedCashBalance = localStorage.getItem("cashBalance");
+    if (savedCashBalance) {
+      setCashBalance(savedCashBalance);
+      setCashBalanceDisplay(formatRupiah(savedCashBalance));
+    }
+    const savedAtmBalance = localStorage.getItem("atmBalance");
+    if (savedAtmBalance) {
+      setAtmBalance(savedAtmBalance);
+      setAtmBalanceDisplay(formatRupiah(savedAtmBalance));
+    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem("expenses", JSON.stringify(expenses));
   }, [expenses]);
+
+  useEffect(() => {
+    localStorage.setItem("cashBalance", cashBalance);
+  }, [cashBalance]);
+
+  useEffect(() => {
+    localStorage.setItem("atmBalance", atmBalance);
+  }, [atmBalance]);
 
   const addExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +72,7 @@ export default function Home() {
       amount: parseFloat(amount),
       category,
       date,
+      accountType,
     };
 
     setExpenses([...expenses, newExpense]);
@@ -51,6 +80,7 @@ export default function Home() {
     setAmount("");
     setAmountDisplay("");
     setDate("");
+    setAccountType("cash");
     setShowForm(false);
   };
 
@@ -71,6 +101,27 @@ export default function Home() {
   };
 
   const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const cashTotal = expenses.filter(e => e.accountType === "cash").reduce((sum, expense) => sum + expense.amount, 0);
+  const atmTotal = expenses.filter(e => e.accountType === "atm").reduce((sum, expense) => sum + expense.amount, 0);
+  const remainingCash = cashBalance ? parseFloat(cashBalance) - cashTotal : 0;
+  const remainingAtm = atmBalance ? parseFloat(atmBalance) - atmTotal : 0;
+
+  const handleBalanceUpdate = () => {
+    setShowBalanceModal(true);
+  };
+
+  const saveBalances = () => {
+    setShowBalanceModal(false);
+  };
+
+  const handleDeleteAll = () => {
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteAll = () => {
+    setExpenses([]);
+    setShowDeleteModal(false);
+  };
 
   const groupExpensesByDate = (expenses: Expense[]) => {
     const grouped: Record<string, Expense[]> = {};
@@ -218,6 +269,35 @@ export default function Home() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Tipe Akun
+                  </label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setAccountType("cash")}
+                      className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                        accountType === "cash"
+                          ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                          : "bg-white/10 text-purple-200 hover:bg-white/20"
+                      }`}
+                    >
+                      💵 Cash
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAccountType("atm")}
+                      className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                        accountType === "atm"
+                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                          : "bg-white/10 text-purple-200 hover:bg-white/20"
+                      }`}
+                    >
+                      💳 ATM/Bank
+                    </button>
+                  </div>
+                </div>
                 <button
                   type="submit"
                   className="w-full bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg transform hover:scale-[1.02]"
@@ -232,7 +312,45 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-purple-200 text-sm font-medium">Total Pengeluaran</span>
+                <span className="text-purple-200 text-sm font-medium">Total Cash</span>
+                <span className="text-2xl">💵</span>
+              </div>
+              <p className="text-3xl font-bold text-white">
+                Rp {cashTotal.toLocaleString("id-ID")}
+              </p>
+              <p className="text-green-300 text-sm mt-2">{expenses.filter(e => e.accountType === "cash").length} transaksi</p>
+              {cashBalance && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-purple-300 text-xs">Saldo: Rp {parseFloat(cashBalance).toLocaleString("id-ID")}</p>
+                  <p className={`${remainingCash >= 0 ? "text-green-400" : "text-red-400"} text-xs font-semibold`}>
+                    Sisa: Rp {remainingCash.toLocaleString("id-ID")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-purple-200 text-sm font-medium">Total ATM/Bank</span>
+                <span className="text-2xl">💳</span>
+              </div>
+              <p className="text-3xl font-bold text-white">
+                Rp {atmTotal.toLocaleString("id-ID")}
+              </p>
+              <p className="text-blue-300 text-sm mt-2">{expenses.filter(e => e.accountType === "atm").length} transaksi</p>
+              {atmBalance && (
+                <div className="mt-3 pt-3 border-t border-white/10">
+                  <p className="text-purple-300 text-xs">Saldo: Rp {parseFloat(atmBalance).toLocaleString("id-ID")}</p>
+                  <p className={`${remainingAtm >= 0 ? "text-green-400" : "text-red-400"} text-xs font-semibold`}>
+                    Sisa: Rp {remainingAtm.toLocaleString("id-ID")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-purple-200 text-sm font-medium">Total Keseluruhan</span>
                 <span className="text-2xl">💸</span>
               </div>
               <p className="text-3xl font-bold text-white">
@@ -240,34 +358,16 @@ export default function Home() {
               </p>
               <p className="text-purple-300 text-sm mt-2">{expenses.length} transaksi</p>
             </div>
+          </div>
 
-            <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-purple-200 text-sm font-medium">Rata-rata</span>
-                <span className="text-2xl">📊</span>
-              </div>
-              <p className="text-3xl font-bold text-white">
-                Rp {expenses.length > 0 ? Math.round(totalAmount / expenses.length).toLocaleString("id-ID") : "0"}
-              </p>
-              <p className="text-purple-300 text-sm mt-2">per transaksi</p>
-            </div>
-
-            <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-purple-200 text-sm font-medium">Kategori Terbanyak</span>
-                <span className="text-2xl">🏆</span>
-              </div>
-              <p className="text-3xl font-bold text-white capitalize">
-                {Object.keys(categoryStats).length > 0
-                  ? Object.entries(categoryStats).sort((a, b) => b[1] - a[1])[0][0]
-                  : "-"}
-              </p>
-              <p className="text-purple-300 text-sm mt-2">
-                {Object.keys(categoryStats).length > 0
-                  ? `${Object.entries(categoryStats).sort((a, b) => b[1] - a[1])[0][1].toLocaleString("id-ID")}`
-                  : "Rp 0"}
-              </p>
-            </div>
+          {/* Update Balance Button */}
+          <div className="mb-8">
+            <button
+              onClick={handleBalanceUpdate}
+              className="bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg"
+            >
+              💰 Update Saldo
+            </button>
           </div>
 
           {/* Category Breakdown */}
@@ -388,6 +488,35 @@ export default function Home() {
                       required
                     />
                   </div>
+                  <div>
+                    <label className="block text-purple-200 text-sm font-medium mb-2">
+                      Tipe Akun
+                    </label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setAccountType("cash")}
+                        className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                          accountType === "cash"
+                            ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                            : "bg-white/10 text-purple-200 hover:bg-white/20"
+                        }`}
+                      >
+                        💵 Cash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAccountType("atm")}
+                        className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                          accountType === "atm"
+                            ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                            : "bg-white/10 text-purple-200 hover:bg-white/20"
+                        }`}
+                      >
+                        💳 ATM/Bank
+                      </button>
+                    </div>
+                  </div>
                   <button
                     type="submit"
                     className="w-full bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg transform hover:scale-[1.02]"
@@ -407,7 +536,7 @@ export default function Home() {
                   </h2>
                   {expenses.length > 0 && (
                     <button
-                      onClick={() => setExpenses([])}
+                      onClick={handleDeleteAll}
                       className="text-sm text-red-400 hover:text-red-300 transition-colors"
                     >
                       Hapus Semua
@@ -474,9 +603,12 @@ export default function Home() {
                               <h3 className="font-semibold text-white text-lg">
                                 {expense.name}
                               </h3>
-                              <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 <span className={`text-xs px-2 py-1 rounded-full font-medium capitalize ${categoryConfig[expense.category]?.bg} ${categoryConfig[expense.category]?.color}`}>
                                   {expense.category}
+                                </span>
+                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${expense.accountType === "cash" ? "bg-green-500/20 text-green-300" : "bg-blue-500/20 text-blue-300"}`}>
+                                  {expense.accountType === "cash" ? "💵 Cash" : "💳 ATM"}
                                 </span>
                                 <span className="text-purple-300/70 text-sm">
                                   {new Date(expense.date).toLocaleDateString("id-ID", {
@@ -523,6 +655,107 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Balance Modal */}
+        {showBalanceModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-900 rounded-3xl p-6 border border-white/20 shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>💰</span> Update Saldo
+                </h2>
+                <button
+                  onClick={() => setShowBalanceModal(false)}
+                  className="text-purple-300 hover:text-white transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Saldo Cash (Rp)
+                  </label>
+                  <input
+                    type="text"
+                    value={cashBalanceDisplay}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, "");
+                      setCashBalance(value);
+                      setCashBalanceDisplay(formatRupiah(value));
+                    }}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Contoh: 1.000.000"
+                  />
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Saldo ATM/Bank (Rp)
+                  </label>
+                  <input
+                    type="text"
+                    value={atmBalanceDisplay}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, "");
+                      setAtmBalance(value);
+                      setAtmBalanceDisplay(formatRupiah(value));
+                    }}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Contoh: 5.000.000"
+                  />
+                </div>
+                <button
+                  onClick={saveBalances}
+                  className="w-full bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg"
+                >
+                  Simpan
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-900 rounded-3xl p-6 border border-white/20 shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>⚠️</span> Konfirmasi Hapus
+                </h2>
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="text-purple-300 hover:text-white transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="space-y-4">
+                <p className="text-purple-200 text-center">
+                  Apakah Anda yakin ingin menghapus semua pengeluaran? Tindakan ini tidak dapat dibatalkan.
+                </p>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="flex-1 bg-white/10 hover:bg-white/20 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={confirmDeleteAll}
+                    className="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-red-500/30"
+                  >
+                    Hapus
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
