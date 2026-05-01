@@ -14,8 +14,18 @@ interface Expense {
   accountType: "cash" | "atm";
 }
 
+interface Income {
+  id: number;
+  name: string;
+  amount: number;
+  category: "transfer_masuk" | "dapat_duit";
+  date: string;
+  accountType: "cash" | "atm";
+}
+
 export default function Home() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [income, setIncome] = useState<Income[]>([]);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [amountDisplay, setAmountDisplay] = useState("");
@@ -32,6 +42,12 @@ export default function Home() {
   const [atmBalanceDisplay, setAtmBalanceDisplay] = useState("");
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
+  const [incomeName, setIncomeName] = useState("");
+  const [incomeAmount, setIncomeAmount] = useState("");
+  const [incomeAmountDisplay, setIncomeAmountDisplay] = useState("");
+  const [incomeCategory, setIncomeCategory] = useState<"transfer_masuk" | "dapat_duit">("transfer_masuk");
+  const [incomeAccountType, setIncomeAccountType] = useState<"cash" | "atm">("atm");
 
   useEffect(() => {
     const savedExpenses = localStorage.getItem("expenses");
@@ -48,6 +64,10 @@ export default function Home() {
       setAtmBalance(savedAtmBalance);
       setAtmBalanceDisplay(formatRupiah(savedAtmBalance));
     }
+    const savedIncome = localStorage.getItem("income");
+    if (savedIncome) {
+      setIncome(JSON.parse(savedIncome));
+    }
   }, []);
 
   useEffect(() => {
@@ -61,6 +81,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("atmBalance", atmBalance);
   }, [atmBalance]);
+
+  useEffect(() => {
+    localStorage.setItem("income", JSON.stringify(income));
+  }, [income]);
 
   const addExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +100,19 @@ export default function Home() {
     };
 
     setExpenses([...expenses, newExpense]);
+
+    // If category is tarik_tunai_atm, transfer balance from ATM to Cash
+    if (category === "tarik_tunai_atm") {
+      const currentAtm = atmBalance ? parseFloat(atmBalance) : 0;
+      const currentCash = cashBalance ? parseFloat(cashBalance) : 0;
+      const transferAmount = parseFloat(amount);
+
+      setAtmBalance((currentAtm - transferAmount).toString());
+      setAtmBalanceDisplay(formatRupiah((currentAtm - transferAmount).toString()));
+      setCashBalance((currentCash + transferAmount).toString());
+      setCashBalanceDisplay(formatRupiah((currentCash + transferAmount).toString()));
+    }
+
     setName("");
     setAmount("");
     setAmountDisplay("");
@@ -121,6 +158,47 @@ export default function Home() {
   const confirmDeleteAll = () => {
     setExpenses([]);
     setShowDeleteModal(false);
+  };
+
+  const addIncome = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!incomeName || !incomeAmount || !date) return;
+
+    const newIncome: Income = {
+      id: Date.now(),
+      name: incomeName,
+      amount: parseFloat(incomeAmount),
+      category: incomeCategory,
+      date,
+      accountType: incomeAccountType,
+    };
+
+    setIncome([...income, newIncome]);
+
+    // Update balance based on account type
+    if (incomeAccountType === "cash") {
+      const currentCash = cashBalance ? parseFloat(cashBalance) : 0;
+      setCashBalance((currentCash + parseFloat(incomeAmount)).toString());
+      setCashBalanceDisplay(formatRupiah((currentCash + parseFloat(incomeAmount)).toString()));
+    } else {
+      const currentAtm = atmBalance ? parseFloat(atmBalance) : 0;
+      setAtmBalance((currentAtm + parseFloat(incomeAmount)).toString());
+      setAtmBalanceDisplay(formatRupiah((currentAtm + parseFloat(incomeAmount)).toString()));
+    }
+
+    setIncomeName("");
+    setIncomeAmount("");
+    setIncomeAmountDisplay("");
+    setDate("");
+    setIncomeCategory("transfer_masuk");
+    setIncomeAccountType("atm");
+    setShowIncomeForm(false);
+  };
+
+  const handleIncomeAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "");
+    setIncomeAmount(value);
+    setIncomeAmountDisplay(formatRupiah(value));
   };
 
   const groupExpensesByDate = (expenses: Expense[]) => {
@@ -173,6 +251,11 @@ export default function Home() {
       bg: "bg-green-50 dark:bg-green-900/30",
       icon: "💊",
     },
+    tarik_tunai_atm: {
+      color: "text-cyan-600 dark:text-cyan-400",
+      bg: "bg-cyan-50 dark:bg-cyan-900/30",
+      icon: "🏧",
+    },
     lainnya: {
       color: "text-gray-600 dark:text-gray-400",
       bg: "bg-gray-50 dark:bg-gray-900/30",
@@ -183,7 +266,10 @@ export default function Home() {
   const getCategoryStats = () => {
     const stats: Record<string, number> = {};
     expenses.forEach((expense) => {
-      stats[expense.category] = (stats[expense.category] || 0) + expense.amount;
+      // Exclude tarik_tunai_atm from chart stats as it's not a real expense
+      if (expense.category !== "tarik_tunai_atm") {
+        stats[expense.category] = (stats[expense.category] || 0) + expense.amount;
+      }
     });
     return stats;
   };
@@ -254,6 +340,7 @@ export default function Home() {
                     <option value="belanja" className="bg-slate-900">🛍️ Belanja</option>
                     <option value="tagihan" className="bg-slate-900">📄 Tagihan</option>
                     <option value="kesehatan" className="bg-slate-900">💊 Kesehatan</option>
+                    <option value="tarik tunai atm" className="bg-slate-900">🏧 Tarik Tunai ATM</option>
                     <option value="lainnya" className="bg-slate-900">📦 Lainnya</option>
                   </select>
                 </div>
@@ -361,12 +448,18 @@ export default function Home() {
           </div>
 
           {/* Update Balance Button */}
-          <div className="mb-8">
+          <div className="mb-8 flex gap-4">
             <button
               onClick={handleBalanceUpdate}
               className="bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg"
             >
               💰 Update Saldo
+            </button>
+            <button
+              onClick={() => setShowIncomeForm(true)}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg shadow-green-500/30"
+            >
+              💵 Tambah Pemasukan
             </button>
           </div>
 
@@ -473,6 +566,7 @@ export default function Home() {
                       <option value="belanja" className="bg-slate-900">🛍️ Belanja</option>
                       <option value="tagihan" className="bg-slate-900">📄 Tagihan</option>
                       <option value="kesehatan" className="bg-slate-900">💊 Kesehatan</option>
+                      <option value="tarik_tunai_atm" className="bg-slate-900">🏧 Tarik Tunai ATM</option>
                       <option value="lainnya" className="bg-slate-900">📦 Lainnya</option>
                     </select>
                   </div>
@@ -652,6 +746,93 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* Income History */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl mt-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <span>💵</span> Riwayat Pemasukan
+                  </h2>
+                  {income.length > 0 && (
+                    <button
+                      onClick={() => setIncome([])}
+                      className="text-sm text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Hapus Semua
+                    </button>
+                  )}
+                </div>
+
+                {income.length === 0 ? (
+                  <div className="text-center py-8">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-full mb-4">
+                      <span className="text-3xl">💰</span>
+                    </div>
+                    <p className="text-purple-200 text-sm">
+                      Belum ada pemasukan
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {income.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((inc) => (
+                      <div
+                        key={inc.id}
+                        className="group flex items-center justify-between p-4 bg-green-500/10 hover:bg-green-500/20 rounded-2xl border border-green-500/20 hover:border-green-500/30 transition-all duration-200"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-green-500/20">
+                            {inc.category === "transfer_masuk" ? "💳" : "💰"}
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-white text-lg">
+                              {inc.name}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-500/20 text-green-300">
+                                {inc.category === "transfer_masuk" ? "Transfer Masuk" : "Dapat Duit"}
+                              </span>
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${inc.accountType === "cash" ? "bg-green-500/20 text-green-300" : "bg-blue-500/20 text-blue-300"}`}>
+                                {inc.accountType === "cash" ? "💵 Cash" : "💳 ATM"}
+                              </span>
+                              <span className="text-purple-300/70 text-sm">
+                                {new Date(inc.date).toLocaleDateString("id-ID", {
+                                  day: "numeric",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <p className="text-xl font-bold text-green-400">
+                            +Rp {inc.amount.toLocaleString("id-ID")}
+                          </p>
+                          <button
+                            onClick={() => setIncome(income.filter(i => i.id !== inc.id))}
+                            className="opacity-0 group-hover:opacity-100 p-2 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-xl transition-all duration-200"
+                            title="Hapus"
+                          >
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -753,6 +934,115 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Income Form Modal */}
+        {showIncomeForm && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-gray-900 rounded-3xl p-6 border border-white/20 shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>💵</span> Tambah Pemasukan
+                </h2>
+                <button
+                  onClick={() => setShowIncomeForm(false)}
+                  className="text-purple-300 hover:text-white transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <form onSubmit={addIncome} className="space-y-4">
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Keterangan
+                  </label>
+                  <input
+                    type="text"
+                    value={incomeName}
+                    onChange={(e) => setIncomeName(e.target.value)}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Contoh: Gaji, Transfer Budi"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Jumlah (Rp)
+                  </label>
+                  <input
+                    type="text"
+                    value={incomeAmountDisplay}
+                    onChange={handleIncomeAmountChange}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="Contoh: 1.000.000"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Kategori
+                  </label>
+                  <select
+                    value={incomeCategory}
+                    onChange={(e) => setIncomeCategory(e.target.value as "transfer_masuk" | "dapat_duit")}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                  >
+                    <option value="transfer_masuk" className="bg-slate-900">💳 Transfer Masuk</option>
+                    <option value="dapat_duit" className="bg-slate-900">💰 Dapat Duit</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Tanggal
+                  </label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Tipe Akun
+                  </label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setIncomeAccountType("cash")}
+                      className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                        incomeAccountType === "cash"
+                          ? "bg-gradient-to-r from-green-600 to-emerald-600 text-white"
+                          : "bg-white/10 text-purple-200 hover:bg-white/20"
+                      }`}
+                    >
+                      💵 Cash
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIncomeAccountType("atm")}
+                      className={`flex-1 py-3 px-4 rounded-xl transition-all duration-200 ${
+                        incomeAccountType === "atm"
+                          ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white"
+                          : "bg-white/10 text-purple-200 hover:bg-white/20"
+                      }`}
+                    >
+                      💳 ATM/Bank
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg"
+                >
+                  Simpan
+                </button>
+              </form>
             </div>
           </div>
         )}
